@@ -15,116 +15,157 @@ function getRadiationLevel(value: number) {
   return RADIATION_LEVELS.find((l) => abs <= l.max) || RADIATION_LEVELS[3];
 }
 
-interface Spark {
+interface Particle {
   id: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+  x: number; y: number;
+  vx: number; vy: number;
+  life: number;
+  size: number;
+  color: string;
+  type: "spark" | "bolt" | "orb";
+}
+
+interface Lightning {
+  id: number;
+  points: { x: number; y: number }[];
   life: number;
   color: string;
 }
 
-function BattleArena({
-  state,
-  fighter1,
-  fighter2,
-  operator,
-  result,
-  sparks,
-  color,
-}: {
-  state: BattleState;
-  fighter1: string;
-  fighter2: string;
-  operator: string;
-  result: string;
-  sparks: Spark[];
-  color: string;
-}) {
-  if (state === "idle") return null;
+function generateLightningPath(x1: number, y1: number, x2: number, y2: number, jaggedness = 8): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [{ x: x1, y: y1 }];
+  const steps = 10;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const mx = x1 + (x2 - x1) * t + (Math.random() - 0.5) * jaggedness * 2;
+    const my = y1 + (y2 - y1) * t + (Math.random() - 0.5) * jaggedness;
+    points.push({ x: mx, y: my });
+  }
+  points.push({ x: x2, y: y2 });
+  return points;
+}
+
+function pointsToPath(pts: { x: number; y: number }[]): string {
+  return pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+}
+
+function CEBar({ value }: { value: number }) {
+  const abs = Math.min(Math.abs(value), 9999);
+  const pct = Math.min((abs / 9999) * 100, 100);
+  const ceLevel = pct < 30 ? { label: "低 LOW", color: "#00ff41" }
+    : pct < 60 ? { label: "中 MID", color: "#aaff00" }
+    : pct < 85 ? { label: "高 HIGH", color: "#ffaa00" }
+    : { label: "無限 MAX", color: "#ff2200" };
 
   return (
-    <div className="battle-arena">
-      <div className="arena-title">⚔ БИТВА ⚔</div>
-      <div className="arena-field">
-        <div className={`fighter fighter-left ${state === "fighting" ? "attack-right" : "victory-fade"}`} style={{ color }}>
-          <div className="fighter-num">{fighter1}</div>
-          <div className="fighter-label">АТАКУЕТ</div>
-        </div>
-
-        <div className={`arena-center ${state === "fighting" ? "clash-pulse" : ""}`}>
-          {state === "fighting" ? (
-            <span className="clash-op" style={{ color }}>{operator}</span>
-          ) : (
-            <span className="victory-sign" style={{ color }}>✓</span>
-          )}
-        </div>
-
-        <div className={`fighter fighter-right ${state === "fighting" ? "attack-left" : "victory-fade"}`} style={{ color }}>
-          <div className="fighter-num">{fighter2}</div>
-          <div className="fighter-label">ЗАЩИЩАЕТСЯ</div>
-        </div>
-
-        {sparks.map((s) => (
-          <div
-            key={s.id}
-            className="spark"
-            style={{
-              left: `calc(50% + ${s.x}px)`,
-              top: `calc(50% + ${s.y}px)`,
-              backgroundColor: s.color,
-              opacity: s.life,
-              transform: `scale(${s.life})`,
-            }}
-          />
+    <div className="ce-bar-wrap">
+      <div className="ce-bar-header">
+        <span className="ce-bar-title">呪力 ПРОКЛЯТАЯ ЭНЕРГИЯ</span>
+        <span className="ce-bar-level" style={{ color: ceLevel.color }}>{ceLevel.label}</span>
+      </div>
+      <div className="ce-bar-track">
+        <div className="ce-bar-fill" style={{
+          width: `${pct}%`,
+          background: `linear-gradient(90deg, #1a0030, ${ceLevel.color})`,
+          boxShadow: `0 0 12px ${ceLevel.color}88, inset 0 0 6px rgba(0,0,0,0.5)`,
+        }} />
+        <div className="ce-bar-glow" style={{ left: `${pct}%`, backgroundColor: ceLevel.color }} />
+      </div>
+      <div className="ce-cursed-marks">
+        {["卍", "呪", "術", "廻", "戦"].map((c, i) => (
+          <span key={i} className="ce-mark" style={{
+            color: (i / 4) * 100 <= pct ? ceLevel.color : "#1a1a1a",
+            textShadow: (i / 4) * 100 <= pct ? `0 0 8px ${ceLevel.color}` : "none",
+          }}>{c}</span>
         ))}
       </div>
-
-      {state === "victory" && (
-        <div className="victory-result" style={{ color, textShadow: `0 0 20px ${color}` }}>
-          <span className="victory-label">ПОБЕДИТЕЛЬ:</span>
-          <span className="victory-num">{result}</span>
-        </div>
-      )}
     </div>
   );
 }
 
-function RadiationBar({ value }: { value: number }) {
-  const abs = Math.min(Math.abs(value), 999);
-  const pct = Math.min((abs / 999) * 100, 100);
-  const level = getRadiationLevel(value);
+function BattleArena({
+  state, fighter1, fighter2, operator, result, particles, lightnings, color,
+}: {
+  state: BattleState; fighter1: string; fighter2: string;
+  operator: string; result: string;
+  particles: Particle[]; lightnings: Lightning[]; color: string;
+}) {
+  if (state === "idle") return null;
 
   return (
-    <div className="radiation-bar-wrap">
-      <div className="radiation-bar-label">
-        <span className="bar-title">УРОВЕНЬ ИЗЛУЧЕНИЯ</span>
-        <span className="bar-unit" style={{ color: level.color }}>{level.label}</span>
+    <div className={`battle-arena ${state === "fighting" ? "arena-fighting" : "arena-victory"}`}>
+      <div className="arena-bg-pulse" />
+
+      <svg className="lightning-layer" viewBox="0 0 308 120" preserveAspectRatio="none">
+        {lightnings.map(l => (
+          <g key={l.id}>
+            <path d={pointsToPath(l.points)} stroke={l.color} strokeWidth="3"
+              strokeOpacity={l.life * 0.6} fill="none" strokeLinecap="round" filter="url(#glow)" />
+            <path d={pointsToPath(l.points)} stroke="#fff" strokeWidth="1"
+              strokeOpacity={l.life * 0.9} fill="none" strokeLinecap="round" />
+          </g>
+        ))}
+        <defs>
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+      </svg>
+
+      <div className="arena-particles">
+        {particles.map(p => (
+          <div key={p.id} className={`particle particle-${p.type}`} style={{
+            left: `calc(50% + ${p.x}px)`,
+            top: `calc(50% + ${p.y}px)`,
+            width: p.size, height: p.size,
+            backgroundColor: p.color,
+            opacity: p.life,
+            transform: `scale(${p.life}) rotate(${p.x * 3}deg)`,
+            boxShadow: `0 0 ${p.size * 2}px ${p.color}`,
+          }} />
+        ))}
       </div>
-      <div className="radiation-bar-track">
-        {Array.from({ length: 20 }).map((_, i) => {
-          const segPct = (i + 1) * 5;
-          const active = segPct <= pct;
-          const segColor =
-            segPct <= 50 ? "#00ff41" :
-            segPct <= 75 ? "#aaff00" :
-            segPct <= 90 ? "#ffaa00" : "#ff2200";
-          return (
-            <div
-              key={i}
-              className="radiation-seg"
-              style={{
-                backgroundColor: active ? segColor : "rgba(255,255,255,0.05)",
-                boxShadow: active ? `0 0 6px ${segColor}` : "none",
-              }}
-            />
-          );
-        })}
+
+      <div className="arena-fighters">
+        <div className={`epic-fighter left ${state === "fighting" ? "charging" : "defeated"}`}>
+          <div className="fighter-aura" style={{ boxShadow: `0 0 30px ${color}, 0 0 60px ${color}44` }} />
+          <div className="fighter-sigil">呪</div>
+          <div className="fighter-number" style={{ color, textShadow: `0 0 20px ${color}` }}>{fighter1}</div>
+          <div className="fighter-title">術師</div>
+        </div>
+
+        <div className={`clash-center ${state === "fighting" ? "clashing" : "resolved"}`}>
+          {state === "fighting" ? (
+            <>
+              <div className="clash-symbol" style={{ color }}>
+                <span className="clash-op-text">{operator}</span>
+              </div>
+              <div className="clash-shockwave" style={{ borderColor: color }} />
+              <div className="clash-shockwave delay2" style={{ borderColor: color }} />
+            </>
+          ) : (
+            <div className="victory-burst" style={{ color }}>✦</div>
+          )}
+        </div>
+
+        <div className={`epic-fighter right ${state === "fighting" ? "charging" : "defeated"}`}>
+          <div className="fighter-aura" style={{ boxShadow: `0 0 30px #8800ff, 0 0 60px #8800ff44` }} />
+          <div className="fighter-sigil" style={{ color: "#8800ff" }}>式</div>
+          <div className="fighter-number" style={{ color: "#bb44ff", textShadow: "0 0 20px #8800ff" }}>{fighter2}</div>
+          <div className="fighter-title">神</div>
+        </div>
       </div>
-      <div className="radiation-scale">
-        <span>0</span><span>250</span><span>500</span><span>750</span><span>999</span>
-      </div>
+
+      {state === "victory" && (
+        <div className="epic-victory">
+          <div className="victory-kanji">勝</div>
+          <div className="victory-content" style={{ color, textShadow: `0 0 30px ${color}, 0 0 60px ${color}66` }}>
+            <span className="victory-label">領域展開</span>
+            <span className="victory-number">{result}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -157,12 +198,15 @@ export default function Index() {
   const [battleF2, setBattleF2] = useState("");
   const [battleOp, setBattleOp] = useState("");
   const [battleResult, setBattleResult] = useState("");
-  const [sparks, setSparks] = useState<Spark[]>([]);
-  const sparkIdRef = useRef(0);
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [lightnings, setLightnings] = useState<Lightning[]>([]);
+  const particleIdRef = useRef(0);
+  const lightningIdRef = useRef(0);
   const animFrameRef = useRef<number | null>(null);
+  const lightningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const numValue = parseFloat(display) || 0;
   const level = getRadiationLevel(numValue);
 
@@ -175,39 +219,98 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
-    if (level.danger >= 2) {
-      setShake(true);
-      setTimeout(() => setShake(false), 400);
-    }
+    if (level.danger >= 2) { setShake(true); setTimeout(() => setShake(false), 400); }
   }, [display]);
 
-  const spawnSparks = (color: string) => {
-    const newSparks: Spark[] = Array.from({ length: 18 }).map(() => {
+  const playEpicSound = () => {
+    try {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+
+      const playNote = (freq: number, start: number, dur: number, vol = 0.3) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const distortion = ctx.createWaveShaper();
+
+        const curve = new Float32Array(256);
+        for (let i = 0; i < 256; i++) {
+          const x = (i * 2) / 256 - 1;
+          curve[i] = ((Math.PI + 400) * x) / (Math.PI + 400 * Math.abs(x));
+        }
+        distortion.curve = curve;
+
+        osc.connect(distortion);
+        distortion.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0, ctx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur + 0.1);
+      };
+
+      // Judas riff (approximation: heavy metal opening riff)
+      const riff = [
+        [146.83, 0.0, 0.12], [146.83, 0.13, 0.12], [146.83, 0.26, 0.08],
+        [196.00, 0.35, 0.15], [174.61, 0.52, 0.12], [155.56, 0.66, 0.20],
+        [130.81, 0.88, 0.30], [146.83, 1.20, 0.25], [164.81, 1.47, 0.20],
+        [196.00, 1.69, 0.35],
+      ];
+      riff.forEach(([f, s, d]) => playNote(f, s, d, 0.25));
+
+      // Power chord stabs
+      [[196, 0.0], [196, 0.13], [233, 0.35], [220, 0.66], [196, 0.88]].forEach(([f, s]) => {
+        playNote(f * 1.5, s, 0.1, 0.15);
+        playNote(f * 2, s, 0.1, 0.1);
+      });
+    } catch { /* audio blocked */ }
+  };
+
+  const spawnLightnings = (color: string) => {
+    const bolts: Lightning[] = Array.from({ length: 6 }).map(() => ({
+      id: ++lightningIdRef.current,
+      points: generateLightningPath(
+        20 + Math.random() * 50, 20 + Math.random() * 80,
+        240 + Math.random() * 50, 20 + Math.random() * 80,
+        12
+      ),
+      life: 1,
+      color: Math.random() > 0.4 ? "#1a0030" : color,
+    }));
+    setLightnings(bolts);
+    setTimeout(() => setLightnings([]), 200);
+  };
+
+  const spawnParticles = (color: string) => {
+    const newP: Particle[] = Array.from({ length: 40 }).map(() => {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 5;
+      const speed = 1.5 + Math.random() * 7;
+      const type = Math.random() < 0.3 ? "bolt" : Math.random() < 0.5 ? "orb" : "spark";
       return {
-        id: ++sparkIdRef.current,
-        x: (Math.random() - 0.5) * 20,
-        y: (Math.random() - 0.5) * 20,
+        id: ++particleIdRef.current,
+        x: (Math.random() - 0.5) * 30,
+        y: (Math.random() - 0.5) * 30,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         life: 1,
-        color: Math.random() > 0.5 ? color : "#ffffff",
+        size: type === "orb" ? 8 + Math.random() * 8 : 3 + Math.random() * 5,
+        color: type === "bolt" ? "#1a0030" : Math.random() > 0.5 ? color : "#ffffff",
+        type,
       };
     });
-    setSparks(newSparks);
+    setParticles(newP);
 
     let frame = 0;
     const animate = () => {
       frame++;
-      setSparks((prev) =>
+      setParticles((prev) =>
         prev
-          .map((s) => ({ ...s, x: s.x + s.vx, y: s.y + s.vy, vy: s.vy + 0.3, life: s.life - 0.035 }))
-          .filter((s) => s.life > 0)
+          .map((p) => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.25, life: p.life - 0.025 }))
+          .filter((p) => p.life > 0)
       );
-      if (frame < 40) {
-        animFrameRef.current = requestAnimationFrame(animate);
-      }
+      if (frame < 60) animFrameRef.current = requestAnimationFrame(animate);
     };
     animFrameRef.current = requestAnimationFrame(animate);
   };
@@ -223,12 +326,8 @@ export default function Index() {
   };
 
   const inputDigit = (digit: string) => {
-    if (waitingForOperand) {
-      setDisplay(digit);
-      setWaitingForOperand(false);
-    } else {
-      setDisplay(display === "0" ? digit : display + digit);
-    }
+    if (waitingForOperand) { setDisplay(digit); setWaitingForOperand(false); }
+    else setDisplay(display === "0" ? digit : display + digit);
   };
 
   const inputDecimal = () => {
@@ -240,15 +339,11 @@ export default function Index() {
     const value = parseFloat(display);
     if (prevValue !== null && operator && !waitingForOperand) {
       const result = calculate(prevValue, value, operator);
-      setDisplay(String(result));
-      setExpression(`${result} ${op}`);
-      setPrevValue(result);
+      setDisplay(String(result)); setExpression(`${result} ${op}`); setPrevValue(result);
     } else {
-      setPrevValue(value);
-      setExpression(`${display} ${op}`);
+      setPrevValue(value); setExpression(`${display} ${op}`);
     }
-    setOperator(op);
-    setWaitingForOperand(true);
+    setOperator(op); setWaitingForOperand(true);
   };
 
   const handleEquals = () => {
@@ -262,32 +357,35 @@ export default function Index() {
     setBattleOp(operator);
     setBattleResult(String(rounded));
     setBattleState("fighting");
-    spawnSparks(level.color);
+
+    playEpicSound();
+    spawnParticles(level.color);
+
+    lightningTimerRef.current = setInterval(() => {
+      spawnLightnings(level.color);
+    }, 180);
 
     setTimeout(() => {
-      spawnSparks(level.color);
+      if (lightningTimerRef.current) clearInterval(lightningTimerRef.current);
+      spawnParticles(level.color);
+      spawnLightnings(level.color);
       setBattleState("victory");
       setDisplay(String(rounded));
       setExpression(`${prevValue} ${operator} ${value} =`);
-      setPrevValue(null);
-      setOperator(null);
-      setWaitingForOperand(true);
-    }, 1400);
+      setPrevValue(null); setOperator(null); setWaitingForOperand(true);
+    }, 2200);
 
     setTimeout(() => {
       setBattleState("idle");
-      setSparks([]);
-    }, 3200);
+      setParticles([]); setLightnings([]);
+    }, 4500);
   };
 
   const handleClear = () => {
-    setDisplay("0");
-    setPrevValue(null);
-    setOperator(null);
-    setWaitingForOperand(false);
-    setExpression("");
-    setBattleState("idle");
-    setSparks([]);
+    setDisplay("0"); setPrevValue(null); setOperator(null);
+    setWaitingForOperand(false); setExpression("");
+    setBattleState("idle"); setParticles([]); setLightnings([]);
+    if (lightningTimerRef.current) clearInterval(lightningTimerRef.current);
   };
 
   const handleToggleSign = () => setDisplay(String(parseFloat(display) * -1));
@@ -319,7 +417,7 @@ export default function Index() {
   return (
     <div className="calc-root">
       <div className="scanlines" />
-      <div className={`calc-body ${shake ? "shake" : ""}`}>
+      <div className={`calc-body ${shake ? "shake" : ""} ${battleState === "fighting" ? "body-battle" : ""}`}>
         <div className="calc-header">
           <RadiationIcon danger={level.danger} />
           <div className="header-text">
@@ -332,41 +430,28 @@ export default function Index() {
           </div>
         </div>
 
-        <RadiationBar value={numValue} />
+        <CEBar value={numValue} />
 
         <BattleArena
-          state={battleState}
-          fighter1={battleF1}
-          fighter2={battleF2}
-          operator={battleOp}
-          result={battleResult}
-          sparks={sparks}
-          color={level.color}
+          state={battleState} fighter1={battleF1} fighter2={battleF2}
+          operator={battleOp} result={battleResult}
+          particles={particles} lightnings={lightnings} color={level.color}
         />
 
         {battleState === "idle" && (
           <div className="display-zone">
             <div className="display-expr">{expression || "\u00A0"}</div>
-            <div
-              className="display-main"
-              style={{ color: level.color, textShadow: `0 0 20px ${level.color}66, 0 0 40px ${level.color}33` }}
-            >
+            <div className="display-main" style={{ color: level.color, textShadow: `0 0 20px ${level.color}66, 0 0 40px ${level.color}33` }}>
               {formatDisplay(display)}
             </div>
-            <div className="display-unit" style={{ color: level.color + "99" }}>
-              мкЗв/ч
-            </div>
+            <div className="display-unit" style={{ color: level.color + "99" }}>мкЗв/ч</div>
           </div>
         )}
 
         <div className="buttons-grid">
           {buttons.map((btn, i) => (
-            <button
-              key={i}
-              className={`calc-btn btn-${btn.type}`}
-              onClick={btn.action}
-              style={btn.type === "op" ? { color: level.color, borderColor: level.color + "55" } : undefined}
-            >
+            <button key={i} className={`calc-btn btn-${btn.type}`} onClick={btn.action}
+              style={btn.type === "op" ? { color: level.color, borderColor: level.color + "55" } : undefined}>
               {btn.label}
             </button>
           ))}
@@ -389,6 +474,7 @@ export default function Index() {
           --bg-btn: #0f1f0f;
           --border: #1a3a1a;
           --text-dim: #3a6e3a;
+          --purple: #8800ff;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -396,52 +482,37 @@ export default function Index() {
         .calc-root {
           min-height: 100vh;
           background: var(--bg-dark);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          display: flex; align-items: center; justify-content: center;
           font-family: 'Share Tech Mono', monospace;
-          position: relative;
-          overflow: hidden;
+          position: relative; overflow: hidden;
         }
-
         .calc-root::before {
-          content: '';
-          position: absolute;
-          inset: 0;
+          content: ''; position: absolute; inset: 0;
           background: radial-gradient(ellipse 60% 60% at 50% 50%, #0a2a0a 0%, #020802 100%);
           z-index: 0;
         }
-
         .scanlines {
-          position: fixed;
-          inset: 0;
-          background: repeating-linear-gradient(
-            to bottom,
-            transparent 0px,
-            transparent 3px,
-            rgba(0,0,0,0.15) 3px,
-            rgba(0,0,0,0.15) 4px
-          );
-          pointer-events: none;
-          z-index: 100;
+          position: fixed; inset: 0;
+          background: repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 4px);
+          pointer-events: none; z-index: 100;
         }
-
         .calc-body {
-          position: relative;
-          z-index: 1;
-          width: 340px;
+          position: relative; z-index: 1; width: 340px;
           background: var(--bg-panel);
-          border: 1px solid #1e3d1e;
-          border-radius: 12px;
-          padding: 20px 16px 16px;
-          box-shadow:
-            0 0 40px rgba(0,255,65,0.1),
-            0 0 80px rgba(0,255,65,0.05),
-            inset 0 1px 0 rgba(0,255,65,0.15);
+          border: 1px solid #1e3d1e; border-radius: 12px; padding: 20px 16px 16px;
+          box-shadow: 0 0 40px rgba(0,255,65,0.1), 0 0 80px rgba(0,255,65,0.05), inset 0 1px 0 rgba(0,255,65,0.15);
+          transition: box-shadow 0.3s;
         }
-
+        .body-battle {
+          box-shadow: 0 0 60px rgba(136,0,255,0.4), 0 0 120px rgba(0,255,65,0.2), inset 0 1px 0 rgba(136,0,255,0.3) !important;
+          animation: body-shake 0.1s infinite;
+        }
+        @keyframes body-shake {
+          0%,100% { transform: translate(0,0); }
+          25% { transform: translate(-2px, 1px); }
+          75% { transform: translate(2px, -1px); }
+        }
         .shake { animation: shake 0.4s ease; }
-
         @keyframes shake {
           0%,100% { transform: translateX(0); }
           20% { transform: translateX(-4px) rotate(-0.5deg); }
@@ -450,351 +521,254 @@ export default function Index() {
           80% { transform: translateX(3px); }
         }
 
+        /* HEADER */
         .calc-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 14px;
-          padding-bottom: 12px;
-          border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; gap: 10px;
+          margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
         }
-
-        .rad-icon-wrap {
-          padding: 6px;
-          border-radius: 50%;
-          border: 1px solid var(--border);
-        }
-
+        .rad-icon-wrap { padding: 6px; border-radius: 50%; border: 1px solid var(--border); }
         .rad-icon-wrap.danger-0 { color: #00ff41; border-color: #00ff4133; }
         .rad-icon-wrap.danger-1 { color: #aaff00; border-color: #aaff0033; }
         .rad-icon-wrap.danger-2 { color: #ffaa00; border-color: #ffaa0033; animation: blink 1s infinite; }
         .rad-icon-wrap.danger-3 { color: #ff2200; border-color: #ff220033; animation: blink 0.5s infinite; }
-
-        @keyframes blink {
-          0%,100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
-
+        @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
         .header-text { flex: 1; }
+        .device-name { font-family:'Russo One',sans-serif; font-size:18px; color:var(--green); letter-spacing:0.15em; text-shadow:0 0 10px rgba(0,255,65,0.5); }
+        .device-model { font-size:9px; color:var(--text-dim); letter-spacing:0.1em; margin-top:2px; }
+        .status-dot-wrap { text-align:center; }
+        .status-dot { width:10px; height:10px; border-radius:50%; margin:0 auto 3px; transition:opacity 0.3s; }
+        .status-dot.active { box-shadow:0 0 8px currentColor; }
+        .status-dot-label { font-size:8px; color:var(--text-dim); letter-spacing:0.1em; }
 
-        .device-name {
-          font-family: 'Russo One', sans-serif;
-          font-size: 18px;
-          color: var(--green);
-          letter-spacing: 0.15em;
-          text-shadow: 0 0 10px rgba(0,255,65,0.5);
+        /* CE BAR */
+        .ce-bar-wrap {
+          background: rgba(0,0,0,0.5); border: 1px solid #2a0050;
+          border-radius: 6px; padding: 8px 10px; margin-bottom: 12px;
+        }
+        .ce-bar-header {
+          display: flex; justify-content: space-between;
+          font-size: 9px; letter-spacing: 0.08em; margin-bottom: 6px;
+        }
+        .ce-bar-title { color: #5a3a7a; }
+        .ce-bar-level { font-weight: bold; font-size: 10px; }
+        .ce-bar-track {
+          height: 10px; background: #0a0015; border-radius: 5px;
+          position: relative; overflow: hidden; border: 1px solid #2a0050;
+        }
+        .ce-bar-fill {
+          height: 100%; border-radius: 5px;
+          transition: width 0.4s cubic-bezier(0.25,1.5,0.5,1);
+        }
+        .ce-bar-glow {
+          position: absolute; top: 0; width: 4px; height: 100%;
+          filter: blur(4px); transform: translateX(-50%);
+          transition: left 0.4s;
+        }
+        .ce-cursed-marks {
+          display: flex; justify-content: space-between;
+          margin-top: 5px; padding: 0 2px;
+        }
+        .ce-mark {
+          font-size: 13px; transition: color 0.3s, text-shadow 0.3s;
+          font-family: serif;
         }
 
-        .device-model {
-          font-size: 9px;
-          color: var(--text-dim);
-          letter-spacing: 0.1em;
-          margin-top: 2px;
-        }
-
-        .status-dot-wrap { text-align: center; }
-
-        .status-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin: 0 auto 3px;
-          transition: opacity 0.3s;
-        }
-
-        .status-dot.active { box-shadow: 0 0 8px currentColor; }
-
-        .status-dot-label {
-          font-size: 8px;
-          color: var(--text-dim);
-          letter-spacing: 0.1em;
-        }
-
-        .radiation-bar-wrap {
-          background: rgba(0,0,0,0.4);
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          padding: 8px 10px;
-          margin-bottom: 12px;
-        }
-
-        .radiation-bar-label {
-          display: flex;
-          justify-content: space-between;
-          font-size: 9px;
-          letter-spacing: 0.1em;
-          margin-bottom: 6px;
-        }
-
-        .bar-title { color: var(--text-dim); }
-
-        .radiation-bar-track {
-          display: flex;
-          gap: 2px;
-          height: 8px;
-        }
-
-        .radiation-seg {
-          flex: 1;
-          border-radius: 1px;
-          transition: background-color 0.3s, box-shadow 0.3s;
-        }
-
-        .radiation-scale {
-          display: flex;
-          justify-content: space-between;
-          font-size: 7px;
-          color: var(--text-dim);
-          margin-top: 4px;
-        }
-
-        /* ===== BATTLE ARENA ===== */
+        /* BATTLE ARENA */
         .battle-arena {
-          background: #020d02;
-          border: 1px solid #0d2b0d;
-          border-radius: 8px;
-          padding: 10px 12px;
-          margin-bottom: 12px;
-          min-height: 90px;
-          overflow: hidden;
+          position: relative; border-radius: 8px;
+          margin-bottom: 12px; overflow: hidden;
+          min-height: 130px;
+          background: radial-gradient(ellipse at 50% 50%, #0d0020 0%, #050008 100%);
+          border: 1px solid #2a0050;
+        }
+        .arena-fighting {
+          border-color: var(--purple);
+          box-shadow: inset 0 0 30px rgba(136,0,255,0.2), 0 0 20px rgba(136,0,255,0.3);
+        }
+        .arena-victory {
+          border-color: #00ff41;
+          box-shadow: inset 0 0 30px rgba(0,255,65,0.15), 0 0 20px rgba(0,255,65,0.2);
+        }
+        .arena-bg-pulse {
+          position: absolute; inset: 0;
+          background: radial-gradient(circle at 50% 50%, rgba(136,0,255,0.15) 0%, transparent 70%);
+          animation: bg-pulse 0.3s ease infinite alternate;
+        }
+        @keyframes bg-pulse {
+          from { opacity: 0.5; transform: scale(0.95); }
+          to   { opacity: 1; transform: scale(1.05); }
         }
 
-        .arena-title {
-          font-size: 9px;
-          letter-spacing: 0.2em;
-          color: var(--text-dim);
-          text-align: center;
-          margin-bottom: 8px;
+        /* LIGHTNING SVG */
+        .lightning-layer {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          pointer-events: none; z-index: 2;
         }
 
-        .arena-field {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          position: relative;
-          height: 56px;
+        /* PARTICLES */
+        .arena-particles { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+        .particle { position: absolute; border-radius: 50%; pointer-events: none; }
+        .particle-bolt { border-radius: 2px; transform-origin: center; }
+        .particle-orb { border-radius: 50%; filter: blur(2px); }
+
+        /* FIGHTERS */
+        .arena-fighters {
+          position: relative; z-index: 4;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 10px 8px;
         }
-
-        .fighter {
-          text-align: center;
-          width: 90px;
-          transition: transform 0.15s;
+        .epic-fighter {
+          width: 90px; text-align: center; position: relative;
         }
-
-        .fighter-num {
-          font-family: 'Share Tech Mono', monospace;
-          font-size: 22px;
-          line-height: 1;
-        }
-
-        .fighter-label {
-          font-size: 7px;
-          color: var(--text-dim);
-          letter-spacing: 0.1em;
-          margin-top: 3px;
-        }
-
-        .attack-right {
-          animation: attack-r 0.35s ease-in-out infinite alternate;
-        }
-
-        .attack-left {
-          animation: attack-l 0.35s ease-in-out infinite alternate;
-        }
-
-        @keyframes attack-r {
-          from { transform: translateX(0) scale(1); }
-          to   { transform: translateX(18px) scale(1.1); }
-        }
-
-        @keyframes attack-l {
-          from { transform: translateX(0) scale(1); }
-          to   { transform: translateX(-18px) scale(1.1); }
-        }
-
-        .victory-fade {
-          animation: victory-pop 0.5s ease forwards;
-        }
-
-        @keyframes victory-pop {
-          0%   { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(0.7); opacity: 0.3; }
-        }
-
-        .arena-center {
-          font-size: 28px;
-          width: 40px;
-          text-align: center;
-          position: relative;
-          z-index: 2;
-        }
-
-        .clash-pulse {
-          animation: clash-p 0.2s ease infinite alternate;
-        }
-
-        @keyframes clash-p {
-          from { transform: scale(1); }
-          to   { transform: scale(1.4); }
-        }
-
-        .clash-op { font-weight: bold; }
-
-        .victory-sign {
-          font-size: 26px;
-          animation: spin-in 0.4s ease forwards;
-        }
-
-        @keyframes spin-in {
-          from { transform: rotate(-180deg) scale(0); opacity: 0; }
-          to   { transform: rotate(0deg) scale(1); opacity: 1; }
-        }
-
-        .spark {
-          position: absolute;
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
+        .fighter-aura {
+          position: absolute; inset: -8px; border-radius: 50%;
+          animation: aura-pulse 0.4s ease infinite alternate;
           pointer-events: none;
-          transition: none;
+        }
+        @keyframes aura-pulse {
+          from { transform: scale(0.9); opacity: 0.6; }
+          to   { transform: scale(1.1); opacity: 1; }
+        }
+        .fighter-sigil {
+          font-size: 20px; font-family: serif; color: var(--green);
+          text-shadow: 0 0 10px var(--green);
+          animation: sigil-spin 2s linear infinite;
+        }
+        @keyframes sigil-spin {
+          from { transform: rotateY(0deg); }
+          to   { transform: rotateY(360deg); }
+        }
+        .fighter-number {
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 22px; font-weight: bold; line-height: 1;
+          margin: 2px 0;
+        }
+        .fighter-title { font-size: 8px; color: #5a5a8a; letter-spacing: 0.15em; }
+        .charging { animation: fighter-charge 0.15s ease infinite alternate; }
+        @keyframes fighter-charge {
+          from { transform: scale(1) translateX(0); }
+          to   { transform: scale(1.08) translateX(6px); }
+        }
+        .epic-fighter.right.charging { animation: fighter-charge-r 0.15s ease infinite alternate; }
+        @keyframes fighter-charge-r {
+          from { transform: scale(1) translateX(0); }
+          to   { transform: scale(1.08) translateX(-6px); }
+        }
+        .defeated { animation: defeated-anim 0.5s ease forwards; }
+        @keyframes defeated-anim {
+          0%   { transform: scale(1.2); opacity: 1; }
+          50%  { transform: scale(0.8) rotate(10deg); opacity: 0.5; }
+          100% { transform: scale(0.6); opacity: 0.2; }
         }
 
-        .victory-result {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          margin-top: 6px;
-          animation: result-appear 0.4s ease forwards;
+        /* CLASH CENTER */
+        .clash-center {
+          width: 60px; text-align: center; position: relative; flex-shrink: 0;
+        }
+        .clash-symbol {
+          font-size: 30px; font-weight: bold; position: relative; z-index: 2;
+          animation: clash-explode 0.1s ease infinite alternate;
+        }
+        @keyframes clash-explode {
+          from { transform: scale(1); filter: brightness(1); }
+          to   { transform: scale(1.5); filter: brightness(2); }
+        }
+        .clash-op-text { display: block; }
+        .clash-shockwave {
+          position: absolute; top: 50%; left: 50%;
+          width: 20px; height: 20px;
+          border: 2px solid; border-radius: 50%;
+          transform: translate(-50%, -50%);
+          animation: shockwave 0.6s ease-out infinite;
+        }
+        .clash-shockwave.delay2 { animation-delay: 0.3s; }
+        @keyframes shockwave {
+          0%   { width: 10px; height: 10px; opacity: 1; }
+          100% { width: 80px; height: 80px; opacity: 0; }
+        }
+        .resolved { animation: resolved-pop 0.4s ease forwards; }
+        .victory-burst {
+          font-size: 32px;
+          animation: victory-burst 0.5s ease forwards;
+        }
+        @keyframes victory-burst {
+          0%   { transform: scale(0) rotate(-180deg); opacity: 0; }
+          60%  { transform: scale(1.5) rotate(20deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0); opacity: 1; }
         }
 
-        @keyframes result-appear {
-          from { opacity: 0; transform: translateY(8px) scale(0.8); }
+        /* EPIC VICTORY */
+        .epic-victory {
+          position: relative; z-index: 5;
+          display: flex; flex-direction: column; align-items: center;
+          padding: 4px 10px 12px;
+          animation: victory-appear 0.5s ease forwards;
+        }
+        @keyframes victory-appear {
+          from { opacity: 0; transform: translateY(10px) scale(0.8); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        .victory-label {
-          font-size: 9px;
-          color: var(--text-dim);
-          letter-spacing: 0.1em;
+        .victory-kanji {
+          font-family: serif; font-size: 28px; color: #8800ff;
+          text-shadow: 0 0 20px #8800ff, 0 0 40px #8800ff88;
+          animation: kanji-float 1s ease infinite alternate;
+          line-height: 1;
         }
-
-        .victory-num {
+        @keyframes kanji-float {
+          from { transform: translateY(0) scale(1); }
+          to   { transform: translateY(-4px) scale(1.05); }
+        }
+        .victory-content {
+          display: flex; align-items: baseline; gap: 8px; margin-top: 2px;
+        }
+        .victory-label { font-size: 9px; letter-spacing: 0.15em; opacity: 0.7; }
+        .victory-number {
           font-family: 'Share Tech Mono', monospace;
-          font-size: 26px;
-          font-weight: bold;
+          font-size: 30px; font-weight: bold;
         }
 
-        /* ===== DISPLAY ===== */
+        /* DISPLAY */
         .display-zone {
-          background: #020d02;
-          border: 1px solid #0d2b0d;
-          border-radius: 8px;
-          padding: 12px 16px 10px;
-          margin-bottom: 14px;
-          text-align: right;
-          min-height: 90px;
-          position: relative;
-          overflow: hidden;
+          background: #020d02; border: 1px solid #0d2b0d; border-radius: 8px;
+          padding: 12px 16px 10px; margin-bottom: 14px; text-align: right; min-height: 90px;
+          position: relative; overflow: hidden;
         }
-
         .display-zone::before {
-          content: '';
-          position: absolute;
-          inset: 0;
+          content: ''; position: absolute; inset: 0;
           background: linear-gradient(135deg, rgba(0,255,65,0.03) 0%, transparent 60%);
           pointer-events: none;
         }
+        .display-expr { font-size: 11px; color: var(--text-dim); min-height: 16px; margin-bottom: 4px; }
+        .display-main { font-size: 44px; font-family: 'Share Tech Mono', monospace; transition: color 0.3s; line-height: 1; }
+        .display-unit { font-size: 10px; letter-spacing: 0.15em; margin-top: 4px; }
 
-        .display-expr {
-          font-size: 11px;
-          color: var(--text-dim);
-          letter-spacing: 0.05em;
-          min-height: 16px;
-          margin-bottom: 4px;
-        }
-
-        .display-main {
-          font-size: 44px;
-          font-family: 'Share Tech Mono', monospace;
-          transition: color 0.3s, text-shadow 0.3s;
-          line-height: 1;
-        }
-
-        .display-unit {
-          font-size: 10px;
-          letter-spacing: 0.15em;
-          margin-top: 4px;
-        }
-
-        /* ===== BUTTONS ===== */
-        .buttons-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-        }
-
+        /* BUTTONS */
+        .buttons-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
         .calc-btn {
-          background: var(--bg-btn);
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          color: #b0d4b0;
-          font-family: 'Share Tech Mono', monospace;
-          font-size: 18px;
-          padding: 0;
-          height: 60px;
-          cursor: pointer;
-          transition: all 0.1s;
-          position: relative;
-          overflow: hidden;
+          background: var(--bg-btn); border: 1px solid var(--border); border-radius: 6px;
+          color: #b0d4b0; font-family: 'Share Tech Mono', monospace; font-size: 18px;
+          padding: 0; height: 60px; cursor: pointer; transition: all 0.1s;
+          position: relative; overflow: hidden;
         }
-
         .calc-btn::before {
-          content: '';
-          position: absolute;
-          inset: 0;
+          content: ''; position: absolute; inset: 0;
           background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 100%);
         }
-
-        .calc-btn:hover {
-          background: #172817;
-          border-color: #2a5e2a;
-          color: #00ff41;
-        }
-
+        .calc-btn:hover { background: #172817; border-color: #2a5e2a; color: #00ff41; }
         .calc-btn:active { transform: scale(0.95); background: #0d200d; }
-
         .btn-func { background: #0c1c0c; color: #6aaa6a; font-size: 14px; }
-
-        .btn-op {
-          background: #0d1f0d;
-          border-color: #1e3d1e;
-          font-size: 22px;
-          font-weight: bold;
-          transition: all 0.1s, color 0.3s, border-color 0.3s;
-        }
-
+        .btn-op { background: #0d1f0d; border-color: #1e3d1e; font-size: 22px; font-weight: bold; }
         .btn-eq {
-          background: #003300;
-          border-color: #005500;
-          color: #00ff41;
-          box-shadow: 0 0 12px rgba(0,255,65,0.15);
-          font-size: 22px;
+          background: #1a0030; border-color: #4400aa; color: #cc44ff;
+          box-shadow: 0 0 12px rgba(136,0,255,0.3); font-size: 22px;
         }
-
-        .btn-eq:hover { background: #004400; box-shadow: 0 0 20px rgba(0,255,65,0.3); }
-
+        .btn-eq:hover { background: #2a0050; box-shadow: 0 0 25px rgba(136,0,255,0.6); color: #ffffff; }
         .btn-num-wide { grid-column: span 2; text-align: left; padding-left: 20px; }
 
         .calc-footer {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 12px;
-          padding-top: 10px;
-          border-top: 1px solid var(--border);
-          font-size: 8px;
-          color: var(--text-dim);
-          letter-spacing: 0.08em;
+          display: flex; justify-content: space-between;
+          margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+          font-size: 8px; color: var(--text-dim); letter-spacing: 0.08em;
         }
       `}</style>
     </div>
