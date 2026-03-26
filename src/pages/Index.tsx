@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 type Operator = "+" | "-" | "×" | "÷" | null;
+type BattleState = "idle" | "fighting" | "victory";
 
 const RADIATION_LEVELS = [
   { max: 10, label: "НОРМА", color: "#00ff41", danger: 0 },
@@ -12,6 +13,82 @@ const RADIATION_LEVELS = [
 function getRadiationLevel(value: number) {
   const abs = Math.abs(value);
   return RADIATION_LEVELS.find((l) => abs <= l.max) || RADIATION_LEVELS[3];
+}
+
+interface Spark {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  color: string;
+}
+
+function BattleArena({
+  state,
+  fighter1,
+  fighter2,
+  operator,
+  result,
+  sparks,
+  color,
+}: {
+  state: BattleState;
+  fighter1: string;
+  fighter2: string;
+  operator: string;
+  result: string;
+  sparks: Spark[];
+  color: string;
+}) {
+  if (state === "idle") return null;
+
+  return (
+    <div className="battle-arena">
+      <div className="arena-title">⚔ БИТВА ⚔</div>
+      <div className="arena-field">
+        <div className={`fighter fighter-left ${state === "fighting" ? "attack-right" : "victory-fade"}`} style={{ color }}>
+          <div className="fighter-num">{fighter1}</div>
+          <div className="fighter-label">АТАКУЕТ</div>
+        </div>
+
+        <div className={`arena-center ${state === "fighting" ? "clash-pulse" : ""}`}>
+          {state === "fighting" ? (
+            <span className="clash-op" style={{ color }}>{operator}</span>
+          ) : (
+            <span className="victory-sign" style={{ color }}>✓</span>
+          )}
+        </div>
+
+        <div className={`fighter fighter-right ${state === "fighting" ? "attack-left" : "victory-fade"}`} style={{ color }}>
+          <div className="fighter-num">{fighter2}</div>
+          <div className="fighter-label">ЗАЩИЩАЕТСЯ</div>
+        </div>
+
+        {sparks.map((s) => (
+          <div
+            key={s.id}
+            className="spark"
+            style={{
+              left: `calc(50% + ${s.x}px)`,
+              top: `calc(50% + ${s.y}px)`,
+              backgroundColor: s.color,
+              opacity: s.life,
+              transform: `scale(${s.life})`,
+            }}
+          />
+        ))}
+      </div>
+
+      {state === "victory" && (
+        <div className="victory-result" style={{ color, textShadow: `0 0 20px ${color}` }}>
+          <span className="victory-label">ПОБЕДИТЕЛЬ:</span>
+          <span className="victory-num">{result}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RadiationBar({ value }: { value: number }) {
@@ -55,7 +132,7 @@ function RadiationBar({ value }: { value: number }) {
 function RadiationIcon({ danger }: { danger: number }) {
   return (
     <div className={`rad-icon-wrap danger-${danger}`}>
-      <svg viewBox="0 0 64 64" width="36" height="36" className="rad-icon">
+      <svg viewBox="0 0 64 64" width="36" height="36">
         <circle cx="32" cy="32" r="6" fill="currentColor" />
         <path d="M32 26 L20 8 A26 26 0 0 1 44 8 Z" fill="currentColor" opacity="0.9"/>
         <path d="M32 26 L8 38 A26 26 0 0 1 8 20 Z" fill="currentColor" opacity="0.9" transform="rotate(120 32 32)"/>
@@ -74,6 +151,16 @@ export default function Index() {
   const [pulse, setPulse] = useState(false);
   const [shake, setShake] = useState(false);
   const [tick, setTick] = useState(0);
+
+  const [battleState, setBattleState] = useState<BattleState>("idle");
+  const [battleF1, setBattleF1] = useState("");
+  const [battleF2, setBattleF2] = useState("");
+  const [battleOp, setBattleOp] = useState("");
+  const [battleResult, setBattleResult] = useState("");
+  const [sparks, setSparks] = useState<Spark[]>([]);
+  const sparkIdRef = useRef(0);
+  const animFrameRef = useRef<number | null>(null);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const numValue = parseFloat(display) || 0;
@@ -93,6 +180,47 @@ export default function Index() {
       setTimeout(() => setShake(false), 400);
     }
   }, [display]);
+
+  const spawnSparks = (color: string) => {
+    const newSparks: Spark[] = Array.from({ length: 18 }).map(() => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 5;
+      return {
+        id: ++sparkIdRef.current,
+        x: (Math.random() - 0.5) * 20,
+        y: (Math.random() - 0.5) * 20,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        color: Math.random() > 0.5 ? color : "#ffffff",
+      };
+    });
+    setSparks(newSparks);
+
+    let frame = 0;
+    const animate = () => {
+      frame++;
+      setSparks((prev) =>
+        prev
+          .map((s) => ({ ...s, x: s.x + s.vx, y: s.y + s.vy, vy: s.vy + 0.3, life: s.life - 0.035 }))
+          .filter((s) => s.life > 0)
+      );
+      if (frame < 40) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    animFrameRef.current = requestAnimationFrame(animate);
+  };
+
+  const calculate = (a: number, b: number, op: Operator): number => {
+    switch (op) {
+      case "+": return a + b;
+      case "-": return a - b;
+      case "×": return a * b;
+      case "÷": return b !== 0 ? a / b : 0;
+      default: return b;
+    }
+  };
 
   const inputDigit = (digit: string) => {
     if (waitingForOperand) {
@@ -123,26 +251,33 @@ export default function Index() {
     setWaitingForOperand(true);
   };
 
-  const calculate = (a: number, b: number, op: Operator): number => {
-    switch (op) {
-      case "+": return a + b;
-      case "-": return a - b;
-      case "×": return a * b;
-      case "÷": return b !== 0 ? a / b : 0;
-      default: return b;
-    }
-  };
-
   const handleEquals = () => {
     if (prevValue === null || !operator) return;
     const value = parseFloat(display);
     const result = calculate(prevValue, value, operator);
     const rounded = Math.round(result * 1e10) / 1e10;
-    setExpression(`${prevValue} ${operator} ${value} =`);
-    setDisplay(String(rounded));
-    setPrevValue(null);
-    setOperator(null);
-    setWaitingForOperand(true);
+
+    setBattleF1(String(prevValue));
+    setBattleF2(String(value));
+    setBattleOp(operator);
+    setBattleResult(String(rounded));
+    setBattleState("fighting");
+    spawnSparks(level.color);
+
+    setTimeout(() => {
+      spawnSparks(level.color);
+      setBattleState("victory");
+      setDisplay(String(rounded));
+      setExpression(`${prevValue} ${operator} ${value} =`);
+      setPrevValue(null);
+      setOperator(null);
+      setWaitingForOperand(true);
+    }, 1400);
+
+    setTimeout(() => {
+      setBattleState("idle");
+      setSparks([]);
+    }, 3200);
   };
 
   const handleClear = () => {
@@ -151,20 +286,13 @@ export default function Index() {
     setOperator(null);
     setWaitingForOperand(false);
     setExpression("");
+    setBattleState("idle");
+    setSparks([]);
   };
 
-  const handleToggleSign = () => {
-    setDisplay(String(parseFloat(display) * -1));
-  };
-
-  const handlePercent = () => {
-    setDisplay(String(parseFloat(display) / 100));
-  };
-
-  const formatDisplay = (val: string) => {
-    if (val.length > 12) return parseFloat(val).toExponential(4);
-    return val;
-  };
+  const handleToggleSign = () => setDisplay(String(parseFloat(display) * -1));
+  const handlePercent = () => setDisplay(String(parseFloat(display) / 100));
+  const formatDisplay = (val: string) => val.length > 12 ? parseFloat(val).toExponential(4) : val;
 
   const buttons = [
     { label: "C", type: "func", action: handleClear },
@@ -206,18 +334,30 @@ export default function Index() {
 
         <RadiationBar value={numValue} />
 
-        <div className="display-zone">
-          <div className="display-expr">{expression || "\u00A0"}</div>
-          <div
-            className="display-main"
-            style={{ color: level.color, textShadow: `0 0 20px ${level.color}66, 0 0 40px ${level.color}33` }}
-          >
-            {formatDisplay(display)}
+        <BattleArena
+          state={battleState}
+          fighter1={battleF1}
+          fighter2={battleF2}
+          operator={battleOp}
+          result={battleResult}
+          sparks={sparks}
+          color={level.color}
+        />
+
+        {battleState === "idle" && (
+          <div className="display-zone">
+            <div className="display-expr">{expression || "\u00A0"}</div>
+            <div
+              className="display-main"
+              style={{ color: level.color, textShadow: `0 0 20px ${level.color}66, 0 0 40px ${level.color}33` }}
+            >
+              {formatDisplay(display)}
+            </div>
+            <div className="display-unit" style={{ color: level.color + "99" }}>
+              мкЗв/ч
+            </div>
           </div>
-          <div className="display-unit" style={{ color: level.color + "99" }}>
-            мкЗв/ч
-          </div>
-        </div>
+        )}
 
         <div className="buttons-grid">
           {buttons.map((btn, i) => (
@@ -268,8 +408,7 @@ export default function Index() {
           content: '';
           position: absolute;
           inset: 0;
-          background: 
-            radial-gradient(ellipse 60% 60% at 50% 50%, #0a2a0a 0%, #020802 100%);
+          background: radial-gradient(ellipse 60% 60% at 50% 50%, #0a2a0a 0%, #020802 100%);
           z-index: 0;
         }
 
@@ -301,9 +440,7 @@ export default function Index() {
             inset 0 1px 0 rgba(0,255,65,0.15);
         }
 
-        .shake {
-          animation: shake 0.4s ease;
-        }
+        .shake { animation: shake 0.4s ease; }
 
         @keyframes shake {
           0%,100% { transform: translateX(0); }
@@ -390,7 +527,6 @@ export default function Index() {
         }
 
         .bar-title { color: var(--text-dim); }
-        .bar-unit { font-weight: bold; }
 
         .radiation-bar-track {
           display: flex;
@@ -412,6 +548,144 @@ export default function Index() {
           margin-top: 4px;
         }
 
+        /* ===== BATTLE ARENA ===== */
+        .battle-arena {
+          background: #020d02;
+          border: 1px solid #0d2b0d;
+          border-radius: 8px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          min-height: 90px;
+          overflow: hidden;
+        }
+
+        .arena-title {
+          font-size: 9px;
+          letter-spacing: 0.2em;
+          color: var(--text-dim);
+          text-align: center;
+          margin-bottom: 8px;
+        }
+
+        .arena-field {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          position: relative;
+          height: 56px;
+        }
+
+        .fighter {
+          text-align: center;
+          width: 90px;
+          transition: transform 0.15s;
+        }
+
+        .fighter-num {
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 22px;
+          line-height: 1;
+        }
+
+        .fighter-label {
+          font-size: 7px;
+          color: var(--text-dim);
+          letter-spacing: 0.1em;
+          margin-top: 3px;
+        }
+
+        .attack-right {
+          animation: attack-r 0.35s ease-in-out infinite alternate;
+        }
+
+        .attack-left {
+          animation: attack-l 0.35s ease-in-out infinite alternate;
+        }
+
+        @keyframes attack-r {
+          from { transform: translateX(0) scale(1); }
+          to   { transform: translateX(18px) scale(1.1); }
+        }
+
+        @keyframes attack-l {
+          from { transform: translateX(0) scale(1); }
+          to   { transform: translateX(-18px) scale(1.1); }
+        }
+
+        .victory-fade {
+          animation: victory-pop 0.5s ease forwards;
+        }
+
+        @keyframes victory-pop {
+          0%   { transform: scale(1.2); opacity: 1; }
+          100% { transform: scale(0.7); opacity: 0.3; }
+        }
+
+        .arena-center {
+          font-size: 28px;
+          width: 40px;
+          text-align: center;
+          position: relative;
+          z-index: 2;
+        }
+
+        .clash-pulse {
+          animation: clash-p 0.2s ease infinite alternate;
+        }
+
+        @keyframes clash-p {
+          from { transform: scale(1); }
+          to   { transform: scale(1.4); }
+        }
+
+        .clash-op { font-weight: bold; }
+
+        .victory-sign {
+          font-size: 26px;
+          animation: spin-in 0.4s ease forwards;
+        }
+
+        @keyframes spin-in {
+          from { transform: rotate(-180deg) scale(0); opacity: 0; }
+          to   { transform: rotate(0deg) scale(1); opacity: 1; }
+        }
+
+        .spark {
+          position: absolute;
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          pointer-events: none;
+          transition: none;
+        }
+
+        .victory-result {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          margin-top: 6px;
+          animation: result-appear 0.4s ease forwards;
+        }
+
+        @keyframes result-appear {
+          from { opacity: 0; transform: translateY(8px) scale(0.8); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .victory-label {
+          font-size: 9px;
+          color: var(--text-dim);
+          letter-spacing: 0.1em;
+        }
+
+        .victory-num {
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 26px;
+          font-weight: bold;
+        }
+
+        /* ===== DISPLAY ===== */
         .display-zone {
           background: #020d02;
           border: 1px solid #0d2b0d;
@@ -453,6 +727,7 @@ export default function Index() {
           margin-top: 4px;
         }
 
+        /* ===== BUTTONS ===== */
         .buttons-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -472,7 +747,6 @@ export default function Index() {
           transition: all 0.1s;
           position: relative;
           overflow: hidden;
-          letter-spacing: 0;
         }
 
         .calc-btn::before {
@@ -488,16 +762,9 @@ export default function Index() {
           color: #00ff41;
         }
 
-        .calc-btn:active {
-          transform: scale(0.95);
-          background: #0d200d;
-        }
+        .calc-btn:active { transform: scale(0.95); background: #0d200d; }
 
-        .btn-func {
-          background: #0c1c0c;
-          color: #6aaa6a;
-          font-size: 14px;
-        }
+        .btn-func { background: #0c1c0c; color: #6aaa6a; font-size: 14px; }
 
         .btn-op {
           background: #0d1f0d;
@@ -515,16 +782,9 @@ export default function Index() {
           font-size: 22px;
         }
 
-        .btn-eq:hover {
-          background: #004400;
-          box-shadow: 0 0 20px rgba(0,255,65,0.3);
-        }
+        .btn-eq:hover { background: #004400; box-shadow: 0 0 20px rgba(0,255,65,0.3); }
 
-        .btn-num-wide {
-          grid-column: span 2;
-          text-align: left;
-          padding-left: 20px;
-        }
+        .btn-num-wide { grid-column: span 2; text-align: left; padding-left: 20px; }
 
         .calc-footer {
           display: flex;
