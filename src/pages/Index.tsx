@@ -195,7 +195,7 @@ export default function Index() {
         <div className="calc-header">
           <RadiationIcon danger={level.danger} />
           <div className="header-text">
-            <div className="device-name">ДОЗИМЕТР</div>
+            <div className="device-name">ВАДИМ</div>
             <div className="device-model">КВ-3000 · КАЛЬКУЛЯТОР</div>
           </div>
           <div className="status-dot-wrap">
