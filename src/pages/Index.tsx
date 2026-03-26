@@ -183,6 +183,78 @@ function RadiationIcon({ danger }: { danger: number }) {
   );
 }
 
+interface EasterEggParticle {
+  id: number; x: number; y: number; vx: number; vy: number;
+  life: number; size: number; color: string; rotation: number; rotSpeed: number;
+}
+
+function EasterEgg67({ onDone }: { onDone: () => void }) {
+  const [phase, setPhase] = useState<"appear" | "explode" | "fade">("appear");
+  const [eParticles, setEParticles] = useState<EasterEggParticle[]>([]);
+  const idRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const COLORS = ["#ff0044","#ff6600","#ffdd00","#00ff88","#00aaff","#cc00ff","#ff00cc","#ffffff"];
+
+  useEffect(() => {
+    const t1 = setTimeout(() => {
+      setPhase("explode");
+      const ps: EasterEggParticle[] = Array.from({ length: 120 }).map(() => {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 3 + Math.random() * 18;
+        return {
+          id: ++idRef.current,
+          x: 0, y: 0,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 4,
+          life: 1,
+          size: 4 + Math.random() * 16,
+          color: COLORS[Math.floor(Math.random() * COLORS.length)],
+          rotation: Math.random() * 360,
+          rotSpeed: (Math.random() - 0.5) * 20,
+        };
+      });
+      setEParticles(ps);
+
+      let frame = 0;
+      const animate = () => {
+        frame++;
+        setEParticles(prev => prev
+          .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.35, life: p.life - 0.018, rotation: p.rotation + p.rotSpeed }))
+          .filter(p => p.life > 0)
+        );
+        if (frame < 100) rafRef.current = requestAnimationFrame(animate);
+      };
+      rafRef.current = requestAnimationFrame(animate);
+    }, 800);
+
+    const t2 = setTimeout(() => setPhase("fade"), 1400);
+    const t3 = setTimeout(() => onDone(), 3200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  return (
+    <div className={`easter-overlay ${phase}`}>
+      <div className="easter-bg-flash" />
+      {eParticles.map(p => (
+        <div key={p.id} className="easter-particle" style={{
+          left: `calc(50% + ${p.x}px)`, top: `calc(50% + ${p.y}px)`,
+          width: p.size, height: p.size,
+          backgroundColor: p.color,
+          opacity: p.life,
+          transform: `translate(-50%,-50%) rotate(${p.rotation}deg)`,
+          borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+          boxShadow: `0 0 ${p.size}px ${p.color}`,
+        }} />
+      ))}
+      <div className={`easter-number ${phase}`}>
+        <span className="easter-67">67</span>
+        <div className="easter-sub">ШЕСТЬДЕСЯТ СЕМЬ</div>
+        <div className="easter-sub2">🎆 ЛЕГЕНДАРНОЕ ЧИСЛО 🎆</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const [display, setDisplay] = useState("0");
   const [prevValue, setPrevValue] = useState<number | null>(null);
@@ -192,6 +264,7 @@ export default function Index() {
   const [pulse, setPulse] = useState(false);
   const [shake, setShake] = useState(false);
   const [tick, setTick] = useState(0);
+  const [easter67, setEaster67] = useState(false);
 
   const [battleState, setBattleState] = useState<BattleState>("idle");
   const [battleF1, setBattleF1] = useState("");
@@ -378,6 +451,7 @@ export default function Index() {
     setTimeout(() => {
       setBattleState("idle");
       setParticles([]); setLightnings([]);
+      if (rounded === 67) setEaster67(true);
     }, 4500);
   };
 
@@ -416,6 +490,7 @@ export default function Index() {
 
   return (
     <div className="calc-root">
+      {easter67 && <EasterEgg67 onDone={() => setEaster67(false)} />}
       <div className="scanlines" />
       <div className={`calc-body ${shake ? "shake" : ""} ${battleState === "fighting" ? "body-battle" : ""}`}>
         <div className="calc-header">
@@ -769,6 +844,104 @@ export default function Index() {
           display: flex; justify-content: space-between;
           margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
           font-size: 8px; color: var(--text-dim); letter-spacing: 0.08em;
+        }
+
+        /* ===== EASTER EGG 67 ===== */
+        .easter-overlay {
+          position: fixed; inset: 0; z-index: 9999;
+          display: flex; align-items: center; justify-content: center;
+          flex-direction: column;
+          cursor: pointer;
+          transition: opacity 0.8s;
+        }
+        .easter-overlay.appear {
+          animation: easter-bg-in 0.3s ease forwards;
+        }
+        .easter-overlay.explode {
+          background: rgba(0,0,0,0.85);
+        }
+        .easter-overlay.fade {
+          animation: easter-fade-out 0.8s ease forwards;
+        }
+        @keyframes easter-bg-in {
+          0%   { background: rgba(255,255,255,1); }
+          30%  { background: rgba(255,200,0,0.9); }
+          100% { background: rgba(0,0,0,0.85); }
+        }
+        @keyframes easter-fade-out {
+          from { opacity: 1; }
+          to   { opacity: 0; pointer-events: none; }
+        }
+        .easter-bg-flash {
+          position: absolute; inset: 0; pointer-events: none;
+          background: radial-gradient(circle at 50% 50%, rgba(255,200,0,0.3) 0%, transparent 70%);
+          animation: flash-pulse 0.4s ease infinite alternate;
+        }
+        @keyframes flash-pulse {
+          from { opacity: 0.4; transform: scale(0.9); }
+          to   { opacity: 1; transform: scale(1.1); }
+        }
+        .easter-particle {
+          position: absolute; pointer-events: none;
+        }
+        .easter-number {
+          position: relative; z-index: 2; text-align: center;
+        }
+        .easter-number.appear {
+          animation: num-slam 0.5s cubic-bezier(0.2, 2, 0.4, 1) forwards;
+        }
+        .easter-number.explode {
+          animation: num-shake 0.1s ease infinite;
+        }
+        .easter-number.fade {
+          animation: num-explode-out 0.6s ease forwards;
+        }
+        @keyframes num-slam {
+          0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+          60%  { transform: scale(1.4) rotate(5deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+        @keyframes num-shake {
+          0%,100% { transform: translate(0,0) scale(1); }
+          25%     { transform: translate(-5px, 3px) scale(1.02); }
+          75%     { transform: translate(5px, -3px) scale(0.98); }
+        }
+        @keyframes num-explode-out {
+          0%   { transform: scale(1); opacity: 1; filter: blur(0); }
+          50%  { transform: scale(2.5); opacity: 0.5; filter: blur(4px); }
+          100% { transform: scale(5); opacity: 0; filter: blur(20px); }
+        }
+        .easter-67 {
+          display: block;
+          font-family: 'Russo One', sans-serif;
+          font-size: clamp(120px, 30vw, 260px);
+          line-height: 1;
+          background: linear-gradient(135deg, #ff0044 0%, #ff6600 25%, #ffdd00 50%, #00ff88 75%, #00aaff 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          filter: drop-shadow(0 0 30px rgba(255,200,0,0.8)) drop-shadow(0 0 60px rgba(255,0,100,0.6));
+          animation: rainbow-shift 0.5s linear infinite;
+        }
+        @keyframes rainbow-shift {
+          0%   { filter: drop-shadow(0 0 30px #ff0044) drop-shadow(0 0 60px #ff6600); }
+          33%  { filter: drop-shadow(0 0 30px #ffdd00) drop-shadow(0 0 60px #00ff88); }
+          66%  { filter: drop-shadow(0 0 30px #00aaff) drop-shadow(0 0 60px #cc00ff); }
+          100% { filter: drop-shadow(0 0 30px #ff0044) drop-shadow(0 0 60px #ff6600); }
+        }
+        .easter-sub {
+          font-family: 'Russo One', sans-serif;
+          font-size: 22px; letter-spacing: 0.2em;
+          color: #ffdd00; text-shadow: 0 0 20px #ffdd00;
+          margin-top: 8px;
+          animation: sub-blink 0.3s ease infinite alternate;
+        }
+        @keyframes sub-blink {
+          from { opacity: 0.7; } to { opacity: 1; }
+        }
+        .easter-sub2 {
+          font-size: 16px; color: #ffffff88; margin-top: 6px;
+          letter-spacing: 0.1em;
         }
       `}</style>
     </div>
