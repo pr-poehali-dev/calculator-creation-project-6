@@ -255,6 +255,111 @@ function EasterEgg67({ onDone }: { onDone: () => void }) {
   );
 }
 
+function makeEasterEgg(
+  num: number | string,
+  label: string,
+  sub: string,
+  sub2: string,
+  colors: string[],
+  bgAnim: string,
+  numClass: string,
+) {
+  return function EasterEggGeneric({ onDone }: { onDone: () => void }) {
+    const [phase, setPhase] = useState<"appear" | "explode" | "fade">("appear");
+    const [eParticles, setEParticles] = useState<EasterEggParticle[]>([]);
+    const idRef = useRef(0);
+    const rafRef = useRef<number | null>(null);
+
+    useEffect(() => {
+      const t1 = setTimeout(() => {
+        setPhase("explode");
+        const ps: EasterEggParticle[] = Array.from({ length: 150 }).map(() => {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 3 + Math.random() * 22;
+          return {
+            id: ++idRef.current,
+            x: 0, y: 0,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 5,
+            life: 1,
+            size: 4 + Math.random() * 18,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rotation: Math.random() * 360,
+            rotSpeed: (Math.random() - 0.5) * 22,
+          };
+        });
+        setEParticles(ps);
+        let frame = 0;
+        const animate = () => {
+          frame++;
+          setEParticles(prev => prev
+            .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.35, life: p.life - 0.016, rotation: p.rotation + p.rotSpeed }))
+            .filter(p => p.life > 0)
+          );
+          if (frame < 120) rafRef.current = requestAnimationFrame(animate);
+        };
+        rafRef.current = requestAnimationFrame(animate);
+      }, 700);
+      const t2 = setTimeout(() => setPhase("fade"), 1500);
+      const t3 = setTimeout(() => onDone(), 3400);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }, []);
+
+    return (
+      <div className={`easter-overlay ${phase} ${bgAnim}`}>
+        <div className="easter-bg-flash" />
+        {eParticles.map(p => (
+          <div key={p.id} className="easter-particle" style={{
+            left: `calc(50% + ${p.x}px)`, top: `calc(50% + ${p.y}px)`,
+            width: p.size, height: p.size,
+            backgroundColor: p.color,
+            opacity: p.life,
+            transform: `translate(-50%,-50%) rotate(${p.rotation}deg)`,
+            borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+            boxShadow: `0 0 ${p.size}px ${p.color}`,
+          }} />
+        ))}
+        <div className={`easter-number ${phase}`}>
+          <span className={numClass}>{num}</span>
+          <div className="easter-sub" style={{ color: colors[0], textShadow: `0 0 20px ${colors[0]}` }}>{label}</div>
+          <div className="easter-sub2">{sub}</div>
+          <div className="easter-sub2">{sub2}</div>
+        </div>
+      </div>
+    );
+  };
+}
+
+const EasterEgg1488 = makeEasterEgg(
+  "1488",
+  "ЭТО ПЛОХОЕ ЧИСЛО",
+  "⚠️ СИСТЕМА ЗАФИКСИРОВАЛА ЗАПРОС ⚠️",
+  "🚨 ФСБ УЖЕ ВЫЕХАЛА 🚨",
+  ["#ff0000","#ff3300","#cc0000","#ff6600","#ffaa00","#ffffff"],
+  "bg-red",
+  "easter-1488",
+);
+
+const EasterEgg52 = makeEasterEgg(
+  "52",
+  "ПЯТЬДЕСЯТ ДВА",
+  "🃏 КОЛОДА КАРТ — 52 ШТУКИ 🃏",
+  "♠ ♥ ♦ ♣ JACKPOT ♣ ♦ ♥ ♠",
+  ["#ffdd00","#ff8800","#00ffcc","#ff00cc","#ffffff","#aaffff"],
+  "bg-casino",
+  "easter-52",
+);
+
+const EasterEgg42 = makeEasterEgg(
+  "42",
+  "ОТВЕТ НА ГЛАВНЫЙ ВОПРОС",
+  "ЖИЗНИ, ВСЕЛЕННОЙ И ВСЕГО ОСТАЛЬНОГО",
+  "📖 Автостопом по галактике 🚀",
+  ["#00ff88","#00aaff","#aaffcc","#ffffff","#88ffff","#00ffff"],
+  "bg-space",
+  "easter-42",
+);
+
 export default function Index() {
   const [display, setDisplay] = useState("0");
   const [prevValue, setPrevValue] = useState<number | null>(null);
@@ -265,6 +370,9 @@ export default function Index() {
   const [shake, setShake] = useState(false);
   const [tick, setTick] = useState(0);
   const [easter67, setEaster67] = useState(false);
+  const [easter1488, setEaster1488] = useState(false);
+  const [easter52, setEaster52] = useState(false);
+  const [easter42, setEaster42] = useState(false);
 
   const [battleState, setBattleState] = useState<BattleState>("idle");
   const [battleF1, setBattleF1] = useState("");
@@ -452,6 +560,9 @@ export default function Index() {
       setBattleState("idle");
       setParticles([]); setLightnings([]);
       if (rounded === 67) setEaster67(true);
+      if (rounded === 1488) setEaster1488(true);
+      if (rounded === 52) setEaster52(true);
+      if (rounded === 42) setEaster42(true);
     }, 4500);
   };
 
@@ -491,6 +602,9 @@ export default function Index() {
   return (
     <div className="calc-root">
       {easter67 && <EasterEgg67 onDone={() => setEaster67(false)} />}
+      {easter1488 && <EasterEgg1488 onDone={() => setEaster1488(false)} />}
+      {easter52 && <EasterEgg52 onDone={() => setEaster52(false)} />}
+      {easter42 && <EasterEgg42 onDone={() => setEaster42(false)} />}
       <div className="scanlines" />
       <div className={`calc-body ${shake ? "shake" : ""} ${battleState === "fighting" ? "body-battle" : ""}`}>
         <div className="calc-header">
@@ -942,6 +1056,88 @@ export default function Index() {
         .easter-sub2 {
           font-size: 16px; color: #ffffff88; margin-top: 6px;
           letter-spacing: 0.1em;
+        }
+
+        /* === 1488 === */
+        .bg-red .easter-bg-flash {
+          background: radial-gradient(circle at 50% 50%, rgba(255,0,0,0.5) 0%, transparent 70%);
+        }
+        @keyframes easter-bg-red {
+          0%   { background: rgba(255,0,0,1); }
+          30%  { background: rgba(180,0,0,0.95); }
+          100% { background: rgba(10,0,0,0.92); }
+        }
+        .bg-red.appear { animation: easter-bg-red 0.3s ease forwards; }
+        .bg-red.explode { background: rgba(10,0,0,0.92); }
+        .easter-1488 {
+          display: block;
+          font-family: 'Russo One', sans-serif;
+          font-size: clamp(90px, 22vw, 200px);
+          line-height: 1;
+          color: #ff2200;
+          text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000, 0 0 80px #ff3300;
+          animation: red-pulse 0.2s ease infinite alternate;
+        }
+        @keyframes red-pulse {
+          from { text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000; }
+          to   { text-shadow: 0 0 40px #ff0000, 0 0 80px #ff2200, 0 0 120px #ff0000; }
+        }
+
+        /* === 52 === */
+        .bg-casino .easter-bg-flash {
+          background: radial-gradient(circle at 50% 50%, rgba(255,200,0,0.4) 0%, transparent 70%);
+        }
+        @keyframes easter-bg-casino {
+          0%   { background: rgba(255,200,0,1); }
+          30%  { background: rgba(120,0,80,0.95); }
+          100% { background: rgba(10,0,30,0.93); }
+        }
+        .bg-casino.appear { animation: easter-bg-casino 0.3s ease forwards; }
+        .bg-casino.explode { background: rgba(10,0,30,0.93); }
+        .easter-52 {
+          display: block;
+          font-family: 'Russo One', sans-serif;
+          font-size: clamp(130px, 35vw, 280px);
+          line-height: 1;
+          background: linear-gradient(135deg, #ffdd00 0%, #ff8800 30%, #ff00cc 60%, #ffdd00 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          background-size: 200% 200%;
+          animation: casino-spin 0.3s linear infinite;
+          filter: drop-shadow(0 0 20px #ffdd00) drop-shadow(0 0 40px #ff00cc);
+        }
+        @keyframes casino-spin {
+          0%   { background-position: 0% 50%; }
+          100% { background-position: 200% 50%; }
+        }
+
+        /* === 42 === */
+        .bg-space .easter-bg-flash {
+          background: radial-gradient(circle at 50% 50%, rgba(0,255,180,0.3) 0%, transparent 70%);
+        }
+        @keyframes easter-bg-space {
+          0%   { background: rgba(0,20,50,1); }
+          30%  { background: rgba(0,40,80,0.97); }
+          100% { background: rgba(0,5,20,0.95); }
+        }
+        .bg-space.appear { animation: easter-bg-space 0.3s ease forwards; }
+        .bg-space.explode { background: rgba(0,5,20,0.95); }
+        .easter-42 {
+          display: block;
+          font-family: 'Russo One', sans-serif;
+          font-size: clamp(140px, 38vw, 300px);
+          line-height: 1;
+          background: linear-gradient(135deg, #00ff88 0%, #00aaff 40%, #aaffcc 70%, #00ffff 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          filter: drop-shadow(0 0 30px #00ff88) drop-shadow(0 0 60px #00aaff);
+          animation: space-glow 0.8s ease infinite alternate;
+        }
+        @keyframes space-glow {
+          from { filter: drop-shadow(0 0 20px #00ff88) drop-shadow(0 0 40px #00aaff); }
+          to   { filter: drop-shadow(0 0 50px #00ffcc) drop-shadow(0 0 90px #00ff88); }
         }
       `}</style>
     </div>
