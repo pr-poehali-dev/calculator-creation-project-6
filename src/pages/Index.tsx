@@ -360,6 +360,16 @@ const EasterEgg42 = makeEasterEgg(
   "easter-42",
 );
 
+const EasterEggDivZero = makeEasterEgg(
+  "∞",
+  "МГЕ МУЖИК УЖЕ ЕДЕТ",
+  "ВСАЖИВАТЬ ТЕБЕ СВОЙ 🍆",
+  "НЕ ДЕЛИ НА НОЛЬ, ПРИДУРОК",
+  ["#ff0066","#ff33cc","#ff6600","#ffffff","#ff0000","#ff99ff"],
+  "bg-red",
+  "easter-42",
+);
+
 export default function Index() {
   const [display, setDisplay] = useState("0");
   const [prevValue, setPrevValue] = useState<number | null>(null);
@@ -373,6 +383,7 @@ export default function Index() {
   const [easter1488, setEaster1488] = useState(false);
   const [easter52, setEaster52] = useState(false);
   const [easter42, setEaster42] = useState(false);
+  const [easterDivZero, setEasterDivZero] = useState(false);
 
   const [battleState, setBattleState] = useState<BattleState>("idle");
   const [battleF1, setBattleF1] = useState("");
@@ -530,13 +541,14 @@ export default function Index() {
   const handleEquals = () => {
     if (prevValue === null || !operator) return;
     const value = parseFloat(display);
+    const isDivByZero = operator === "÷" && value === 0;
     const result = calculate(prevValue, value, operator);
     const rounded = Math.round(result * 1e10) / 1e10;
 
     setBattleF1(String(prevValue));
     setBattleF2(String(value));
     setBattleOp(operator);
-    setBattleResult(String(rounded));
+    setBattleResult(isDivByZero ? "∞" : String(rounded));
     setBattleState("fighting");
 
     playEpicSound();
@@ -551,7 +563,7 @@ export default function Index() {
       spawnParticles(level.color);
       spawnLightnings(level.color);
       setBattleState("victory");
-      setDisplay(String(rounded));
+      setDisplay(isDivByZero ? "МГЕ" : String(rounded));
       setExpression(`${prevValue} ${operator} ${value} =`);
       setPrevValue(null); setOperator(null); setWaitingForOperand(true);
     }, 2200);
@@ -559,6 +571,7 @@ export default function Index() {
     setTimeout(() => {
       setBattleState("idle");
       setParticles([]); setLightnings([]);
+      if (isDivByZero) { setEasterDivZero(true); return; }
       if (rounded === 67) setEaster67(true);
       if (rounded === 1488) setEaster1488(true);
       if (rounded === 52) setEaster52(true);
@@ -605,6 +618,7 @@ export default function Index() {
       {easter1488 && <EasterEgg1488 onDone={() => setEaster1488(false)} />}
       {easter52 && <EasterEgg52 onDone={() => setEaster52(false)} />}
       {easter42 && <EasterEgg42 onDone={() => setEaster42(false)} />}
+      {easterDivZero && <EasterEggDivZero onDone={() => setEasterDivZero(false)} />}
       <div className="scanlines" />
       <div className={`calc-body ${shake ? "shake" : ""} ${battleState === "fighting" ? "body-battle" : ""}`}>
         <div className="calc-header">
